@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>센서스튜디오 규정집 뷰어</title>
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons (CDN) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- 커스텀 폰트 (Umdot) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MonadABXY/umdot-font@main/umdot.css">
+    
+    <style>
+        body {
+            font-family: 'umdot', sans-serif !important;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px) scale(0.99); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes zoomIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .animate-zoom-in {
+            animation: zoomIn 0.2s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-[#f0f0fe] selection:bg-[#877efd]/30 min-h-screen flex flex-col">
+
+    <!-- 메인 뷰어 영역 -->
+    <main class="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 relative">
+        <div class="w-full max-w-6xl flex items-center justify-between gap-2 sm:gap-8">
+            
+            <!-- 이전 버튼 (PC) -->
+            <button 
+                id="prev-btn"
+                onclick="handlePrev()" 
+                class="hidden sm:flex p-4 rounded-full bg-white shadow-lg hover:bg-[#877efd]/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all transform hover:scale-105 active:scale-95"
+                aria-label="이전 페이지">
+                <i data-lucide="chevron-left" class="w-8 h-8 text-gray-700"></i>
+            </button>
+
+            <!-- 책 컨테이너 -->
+            <div 
+                id="book-container"
+                class="relative flex shadow-[0_25px_50px_-12px_rgba(0,0,0,0.4)] rounded-lg bg-white h-[75vh] min-h-[500px] w-full transition-all duration-500 ease-in-out border border-[#877efd]/20">
+                <!-- JavaScript를 통해 이 내부의 콘텐츠가 렌더링 됩니다 -->
+            </div>
+
+            <!-- 다음 버튼 (PC) -->
+            <button 
+                id="next-btn"
+                onclick="handleNext()" 
+                class="hidden sm:flex p-4 rounded-full bg-white shadow-lg hover:bg-[#877efd]/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all transform hover:scale-105 active:scale-95"
+                aria-label="다음 페이지">
+                <i data-lucide="chevron-right" class="w-8 h-8 text-gray-700"></i>
+            </button>
+
+        </div>
+
+        <!-- 하단 페이지 표시 (PC) -->
+        <div id="desktop-pagination" class="mt-8 flex flex-col items-center hidden sm:flex">
+            <!-- JavaScript를 통해 렌더링 됩니다 -->
+        </div>
+    </main>
+
+    <!-- 이미지 확대 모달 -->
+    <div id="zoom-modal" class="hidden fixed inset-0 z-50 bg-black/95 backdrop-blur-sm items-center justify-center p-2 sm:p-6 animate-zoom-in" onclick="closeZoom()">
+        <img id="zoomed-img" src="" alt="Zoomed" class="max-h-full max-w-full object-contain cursor-zoom-out shadow-2xl rounded-sm" />
+        <button class="absolute top-4 right-4 sm:top-8 sm:right-8 bg-white/10 hover:bg-white/20 text-white p-2 rounded-full transition-colors backdrop-blur-md" onclick="event.stopPropagation(); closeZoom()">
+            <i data-lucide="x" class="w-8 h-8"></i>
+        </button>
+        <div class="absolute bottom-6 text-white/70 text-sm flex items-center gap-2 bg-black/50 px-4 py-2 rounded-full">
+            <i data-lucide="mouse-pointer-click" class="w-4 h-4"></i> 화면을 클릭하면 닫힙니다
+        </div>
+    </div>
+
+    <!-- JavaScript 로직 -->
+    <script>
+        const images = [
+            'https://raw.githubusercontent.com/Hosain1291/sensorrulecartoon/main/%EC%84%BC%EC%84%9C%EC%8A%A4%ED%8A%9C%EB%94%94%EC%98%A4%20%EA%B7%9C%EC%B9%99%EB%A7%8C%ED%99%94%20(1).png',
+            'https://raw.githubusercontent.com/Hosain1291/sensorrulecartoon/main/%EC%84%BC%EC%84%9C%EC%8A%A4%ED%8A%9C%EB%94%94%EC%98%A4%20%EA%B7%9C%EC%B9%99%EB%A7%8C%ED%99%94%20(3).png',
+            'https://raw.githubusercontent.com/Hosain1291/sensorrulecartoon/main/%EC%84%BC%EC%84%9C%EC%8A%A4%ED%8A%9C%EB%94%94%EC%98%A4%20%EA%B7%9C%EC%B9%99%EB%A7%8C%ED%99%94%20(4).png',
+            'https://raw.githubusercontent.com/Hosain1291/sensorrulecartoon/main/%EC%84%BC%EC%84%9C%EC%8A%A4%ED%8A%9C%EB%94%94%EC%98%A4%20%EA%B7%9C%EC%B9%99%EB%A7%8C%ED%99%94%20(2).png',
+        ];
+
+        let step = 0;
+        let isMobile = window.innerWidth < 768;
+        let zoomedImage = null;
+        
+        // 터치 스와이프 상태
+        let touchStart = null;
+        let touchEnd = null;
+
+        // 최대 단계 계산
+        function getMaxStep() {
+            return isMobile ? images.length - 1 : Math.ceil((images.length + 1) / 2) - 1;
+        }
+
+        // 상태 업데이트 및 렌더링
+        function updateStep(newStep) {
+            step = Math.max(0, Math.min(newStep, getMaxStep()));
+            render();
+        }
+
+        function handleNext() { updateStep(step + 1); }
+        function handlePrev() { updateStep(step - 1); }
+
+        // 확대 모달 핸들링
+        function openZoom(src) {
+            zoomedImage = src;
+            document.getElementById('zoomed-img').src = src;
+            const modal = document.getElementById('zoom-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeZoom() {
+            zoomedImage = null;
+            const modal = document.getElementById('zoom-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        // PC 양면 보기 페이지 계산
+        function getDesktopPages() {
+            if (step === 0) return [null, images[0]];
+            if (step === 1) return [images[1], images[2]];
+            if (step === 2) return [images[3], null];
+            return [null, null];
+        }
+
+        // 현재 페이지 텍스트 반환
+        function getPageText() {
+            if (isMobile) {
+                return `${step + 1} / ${images.length}`;
+            } else {
+                return step === 0 ? `1 / ${images.length}` : step === 1 ? `2 - 3 / ${images.length}` : `4 / ${images.length}`;
+            }
+        }
+
+        // 화면 렌더링 함수
+        function render() {
+            const container = document.getElementById('book-container');
+            container.innerHTML = ''; // 초기화
+
+            if (isMobile) {
+                // 모바일 뷰 (단면)
+                container.innerHTML = `
+                    <div class="w-full h-full flex flex-col items-center justify-center p-2 relative overflow-hidden">
+                        <img src="${images[step]}" alt="Page ${step + 1}" class="max-h-full max-w-full object-contain drop-shadow-md animate-fade-in cursor-zoom-in" onclick="openZoom('${images[step]}')"/>
+                        
+                        <!-- 모바일 양옆 터치 영역 -->
+                        <div class="absolute inset-y-0 left-0 w-1/5 z-10" onclick="handlePrev()"></div>
+                        <div class="absolute inset-y-0 right-0 w-1/5 z-10" onclick="handleNext()"></div>
+                    </div>
+                    
+                    <!-- 모바일 하단 네비게이션 버튼 -->
+                    <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg z-20">
+                        <button onclick="handlePrev()" ${step === 0 ? 'disabled' : ''} class="p-1 disabled:opacity-30"><i data-lucide="chevron-left" class="w-6 h-6"></i></button>
+                        <span class="text-sm font-bold w-12 text-center">${getPageText()}</span>
+                        <button onclick="handleNext()" ${step === getMaxStep() ? 'disabled' : ''} class="p-1 disabled:opacity-30"><i data-lucide="chevron-right" class="w-6 h-6"></i></button>
+                    </div>
+                `;
+            } else {
+                // 데스크탑 뷰 (양면)
+                const [leftPage, rightPage] = getDesktopPages();
+                
+                const leftContent = leftPage 
+                    ? `<img src="${leftPage}" alt="Left Page" class="max-h-full max-w-full object-contain drop-shadow-xl animate-fade-in cursor-zoom-in hover:scale-[1.02] transition-transform duration-300" onclick="openZoom('${leftPage}')"/>`
+                    : `<div class="w-full h-full bg-gradient-to-br from-[#e8e7fd] to-[#d8d6fc] rounded-l-lg flex flex-col items-center justify-center text-[#877efd]/50 border-r border-black/5 shadow-inner">
+                        <i data-lucide="book-open" class="w-12 h-12 opacity-40 mb-4"></i>
+                        <span class="font-semibold tracking-widest text-sm opacity-60">COVER</span>
+                       </div>`;
+
+                const rightContent = rightPage
+                    ? `<img src="${rightPage}" alt="Right Page" class="max-h-full max-w-full object-contain drop-shadow-xl animate-fade-in cursor-zoom-in hover:scale-[1.02] transition-transform duration-300" onclick="openZoom('${rightPage}')"/>`
+                    : `<div class="w-full h-full bg-white rounded-r-lg flex items-center justify-center text-gray-300"></div>`;
+
+                container.innerHTML = `
+                    <!-- 책 중앙 접히는 선 -->
+                    <div class="absolute left-1/2 top-0 bottom-0 w-[60px] -ml-[30px] bg-gradient-to-r from-transparent via-black/10 to-transparent z-20 pointer-events-none" style="box-shadow: inset 0 0 20px rgba(0,0,0,0.05)"></div>
+                    
+                    <!-- 좌측 페이지 -->
+                    <div class="w-1/2 h-full relative rounded-l-lg overflow-hidden flex items-center justify-center p-6" style="box-shadow: inset -8px 0 15px rgba(0,0,0,0.04)">
+                        ${leftContent}
+                    </div>
+                    <!-- 우측 페이지 -->
+                    <div class="w-1/2 h-full relative rounded-r-lg overflow-hidden flex items-center justify-center p-6 bg-white" style="box-shadow: inset 8px 0 15px rgba(0,0,0,0.02)">
+                        ${rightContent}
+                    </div>
+                `;
+            }
+
+            // PC 버튼 비활성화 상태 업데이트
+            document.getElementById('prev-btn').disabled = step === 0;
+            document.getElementById('next-btn').disabled = step === getMaxStep();
+
+            // 하단 페이지 표시 (PC) 영역 업데이트
+            const desktopPagination = document.getElementById('desktop-pagination');
+            if (isMobile) {
+                desktopPagination.classList.add('hidden');
+                desktopPagination.classList.remove('flex');
+            } else {
+                desktopPagination.classList.remove('hidden');
+                desktopPagination.classList.add('flex');
+                
+                let dotsHtml = '';
+                for(let i=0; i<=getMaxStep(); i++) {
+                    dotsHtml += `<button onclick="updateStep(${i})" class="h-2.5 rounded-full transition-all duration-300 ${step === i ? 'w-10 bg-[#877efd] shadow-md' : 'w-3 bg-gray-400 hover:bg-gray-500'}"></button>`;
+                }
+
+                desktopPagination.innerHTML = `
+                    <div class="text-gray-600 font-medium mb-3 bg-white/50 px-4 py-1 rounded-full">
+                        페이지 ${getPageText()}
+                    </div>
+                    <div class="flex gap-3">
+                        ${dotsHtml}
+                    </div>
+                    <div class="mt-4 text-xs text-gray-500 flex items-center gap-1">
+                        키보드 방향키 <kbd class="bg-gray-200 px-1.5 py-0.5 rounded border border-gray-300">←</kbd> <kbd class="bg-gray-200 px-1.5 py-0.5 rounded border border-gray-300">→</kbd> 로 넘길 수 있습니다.
+                    </div>
+                `;
+            }
+
+            // 동적으로 추가된 아이콘을 다시 그려줍니다.
+            lucide.createIcons();
+        }
+
+        // 스와이프 이벤트 설정
+        const container = document.getElementById('book-container');
+        container.addEventListener('touchstart', (e) => {
+            touchEnd = null;
+            touchStart = e.targetTouches[0].clientX;
+        });
+        container.addEventListener('touchmove', (e) => {
+            touchEnd = e.targetTouches[0].clientX;
+        });
+        container.addEventListener('touchend', () => {
+            if (!touchStart || !touchEnd) return;
+            const distance = touchStart - touchEnd;
+            if (distance > 50) handleNext();
+            if (distance < -50) handlePrev();
+        });
+
+        // 리사이즈 이벤트 설정
+        window.addEventListener('resize', () => {
+            isMobile = window.innerWidth < 768;
+            if (step > getMaxStep()) {
+                step = getMaxStep();
+            }
+            render();
+        });
+
+        // 키보드 방향키 이벤트 설정
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') handleNext();
+            if (e.key === 'ArrowLeft') handlePrev();
+            if (e.key === 'Escape' && zoomedImage) closeZoom();
+        });
+
+        // 초기 렌더링 실행
+        render();
+        // 헤더 등 정적으로 배치된 아이콘 초기화
+        lucide.createIcons();
+    </script>
+</body>
+</html>
